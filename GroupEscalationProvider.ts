@@ -1,4 +1,5 @@
 import type { Agent } from "@tokenring-ai/agent";
+import EnhancedSet from "@tokenring-ai/utility/set/enhancedSet";
 import type { z } from "zod";
 import type { CommunicationChannel } from "./EscalationProvider.ts";
 import { EscalationService } from "./index.ts";
@@ -50,10 +51,10 @@ export default class GroupEscalationProvider implements EscalationProvider {
         });
 
         // Merge all generators into one stream
-        const activeProducers = new Set(producers.map(p => p[Symbol.asyncIterator]()));
+        const activeProducers = new EnhancedSet(producers.map(p => p[Symbol.asyncIterator]()));
 
         while (activeProducers.size > 0 && !abortController.signal.aborted) {
-          const nexts = Array.from(activeProducers).map(it => it.next().then(res => ({ it, res })));
+          const nexts = activeProducers.map(it => it.next().then(res => ({ it, res })));
           const { it, res } = await Promise.race(nexts);
 
           if (res.done) {
