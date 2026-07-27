@@ -1,3 +1,4 @@
-import escalate from "./commands/escalate.ts";
+import bots from "./commands/bots.ts";
+import message from "./commands/message.ts";
 
-export default [escalate];
+export default [message, bots];

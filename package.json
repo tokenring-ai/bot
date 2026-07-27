@@ -1,10 +1,11 @@
 {
-  "name": "@tokenring-ai/escalation",
+  "name": "@tokenring-ai/bot",
   "version": "0.2.0",
-  "description": "Protocol for handing off complex tasks to humans or senior agents.",
+  "description": "Channel-agnostic bots that talk to users and groups across messaging platforms",
   "dependencies": {
     "@tokenring-ai/agent": "workspace:*",
     "@tokenring-ai/app": "workspace:*",
+    "@tokenring-ai/rpc": "workspace:*",
     "@tokenring-ai/utility": "workspace:*",
     "zod": "^4.4.3"
   },

@@ -1,32 +1,32 @@
 import { AgentCommandService } from "@tokenring-ai/agent";
 import type { TokenRingPlugin } from "@tokenring-ai/app";
+import { RpcService } from "@tokenring-ai/rpc";
 import { z } from "zod";
+import BotService from "./BotService.ts";
 import agentCommands from "./commands.ts";
-import EscalationService from "./EscalationService.ts";
-import GroupEscalationProvider from "./GroupEscalationProvider.ts";
 import packageJSON from "./package.json" with { type: "json" };
-import { EscalationServiceConfigSchema } from "./schema.ts";
+import botRPC from "./rpc/bot.ts";
+import { BotServiceConfigSchema } from "./schema.ts";
 
 const packageConfigSchema = z.object({
-  escalation: EscalationServiceConfigSchema.exactOptional(),
+  bot: BotServiceConfigSchema.prefault({}),
 });
 
 export default {
   name: packageJSON.name,
-  displayName: "Escalation Service",
+  displayName: "Bots",
   version: packageJSON.version,
   description: packageJSON.description,
-  install(app, config) {
-    if (config.escalation) {
-      const service = new EscalationService(config.escalation);
-      app.addServices(service);
+  async install(app, config) {
+    const service = new BotService(app);
+    app.addServices(service);
+    await service.reconfigure(config.bot);
 
-      for (const [groupName, groupConfig] of Object.entries(config.escalation.groups)) {
-        service.registerProvider(groupName, new GroupEscalationProvider(groupConfig));
-      }
-
-      app.waitForService(AgentCommandService, agentCommandService => agentCommandService.addAgentCommands(agentCommands));
-    }
+    app.waitForService(AgentCommandService, agentCommandService => agentCommandService.addAgentCommands(agentCommands));
+    app.waitForService(RpcService, rpcService => rpcService.registerEndpoint(botRPC));
+  },
+  async reconfigure(app, config) {
+    await app.requireService(BotService).reconfigure(config.bot);
   },
   configSchema: packageConfigSchema,
 } satisfies TokenRingPlugin<typeof packageConfigSchema>;
