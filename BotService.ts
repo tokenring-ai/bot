@@ -51,7 +51,10 @@ export default class BotService implements TokenRingService {
     await this.bots.reconcileAgainstAsync(newConfig.bots, {
       creating: (name, config) => new Bot(this.app, this, name, config),
       deleting: async (_name, bot) => await bot.stop(),
-      updating: (_name, bot, newConfig) => bot.reconfigure(newConfig),
+      updating: (_name, bot, newConfig) => {
+        bot.reconfigure(newConfig);
+        return bot;
+      },
     });
 
     this.config = newConfig;
@@ -89,6 +92,7 @@ export default class BotService implements TokenRingService {
     if (!service || !id) {
       throw new ConfigurationError(this.name, `Invalid target "${target}", expected service:userId`);
     }
+
     return { service, id };
   }
 
@@ -100,8 +104,6 @@ export default class BotService implements TokenRingService {
    * the bot's own agent does not also try to answer them.
    */
   async openChannel(target: string, visitedGroups: ReadonlySet<string> = new Set()): Promise<CommunicationChannel> {
-    if (!this.config) throw new ConfigurationError(this.name, `Bot service is not configured`);
-
     const { service, id } = this.parseTarget(target);
 
     if (service === GROUP_SERVICE) {
@@ -159,8 +161,6 @@ export default class BotService implements TokenRingService {
 
   /** Sends a message to a user, channel, or group without waiting for a reply. */
   async sendMessage(target: string, message: string, visitedGroups: ReadonlySet<string> = new Set()): Promise<void> {
-    if (!this.config) throw new ConfigurationError(this.name, `Bot service is not configured`);
-
     const { service, id } = this.parseTarget(target);
 
     if (service === GROUP_SERVICE) {
