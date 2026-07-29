@@ -15,12 +15,21 @@ type Conversation = {
   service: string;
   provider: MessagingProvider;
   conversationId: string;
+  /** Target of the configured channel this belongs to, if it is one. */
+  channelTarget?: string | undefined;
   agentType: string;
   agent: Agent;
   /** The response currently being streamed back, if any. */
   stream?: ConversationStream | undefined;
   activeRequests: Set<string>;
   listening: boolean;
+  /**
+   * Tail of the chain that hands messages to the agent. Messages arrive from the
+   * platform as independent tasks, and each has to wait for the agent to fall
+   * idle before it may speak; without a queue two that arrive together both pass
+   * that wait and interleave into one conversation.
+   */
+  dispatch: Promise<void>;
   startedAt: number;
   lastActivityAt: number;
 };
@@ -50,7 +59,12 @@ export type BotConversationInfo = {
  */
 export default class Bot {
   private conversations = new EnhancedMap<string, Conversation>();
-  private announcedServices = new Set<string>();
+  /**
+   * Channel targets already announced in. Tracked per target rather than per
+   * service so that a channel added later — by config, or by joining a group —
+   * still gets its greeting.
+   */
+  private announcedTargets = new Set<string>();
   private batchProcessor = new ThrottledBatchProcessor<string>(keys => this.flushConversations(keys), 250);
 
   constructor(
@@ -94,16 +108,19 @@ export default class Bot {
 
   /**
    * Announces the bot in the channels it holds on a service, once that
-   * service's provider has connected.
+   * service's provider has connected. Safe to call repeatedly — each channel is
+   * greeted once, so a config change that adds a channel announces only there.
    */
   onProviderAvailable(service: string, provider: MessagingProvider): void {
-    if (!this.config.joinMessage || this.announcedServices.has(service)) return;
-    this.announcedServices.add(service);
-
     const joinMessage = this.config.joinMessage;
+    if (!joinMessage) return;
+
     for (const target of this.channelTargets()) {
+      if (this.announcedTargets.has(target)) continue;
+
       const parsed = this.botService.parseTarget(target);
       if (parsed.service !== service) continue;
+      this.announcedTargets.add(target);
 
       this.app.runBackgroundTask(this.botService, async () => {
         try {
@@ -120,8 +137,11 @@ export default class Bot {
   async handleMessage(service: string, provider: MessagingProvider, msg: IncomingMessage): Promise<void> {
     const userTarget = `${service}:${msg.userId}`;
     const conversationKey = `${service}:${msg.conversationId}`;
+    // A thread inside a room — a forum topic — is normally governed by the
+    // room's config while getting an agent of its own. A channel configured for
+    // the thread itself wins, so a bot can be confined to one topic.
+    const channelTarget = this.channelConfigForTarget(conversationKey) ? conversationKey : `${service}:${msg.roomId ?? msg.conversationId}`;
     const text = msg.text.trim();
-    const attachments = msg.attachments ?? [];
 
     let agentType: string;
     if (msg.direct) {
@@ -134,7 +154,7 @@ export default class Bot {
       }
       agentType = this.config.agentType;
     } else {
-      const channelConfig = this.channelConfigForTarget(conversationKey);
+      const channelConfig = this.channelConfigForTarget(channelTarget);
       if (!channelConfig) return;
       if (this.config.requireMention && !msg.addressed) return;
 
@@ -145,9 +165,9 @@ export default class Bot {
       agentType = channelConfig.agentType ?? this.config.agentType;
     }
 
-    if (!text && attachments.length === 0) return;
+    if (!text && !msg.hasAttachments) return;
 
-    const conversation = this.ensureConversation(conversationKey, service, provider, msg.conversationId, agentType);
+    const conversation = this.ensureConversation(conversationKey, service, provider, msg.conversationId, channelTarget, agentType);
     conversation.lastActivityAt = Date.now();
     const parsed = parseCommand(text, this.config.commandMapping, msg.userName ?? msg.userId);
 
@@ -165,19 +185,49 @@ export default class Bot {
         return;
     }
 
-    await conversation.agent.waitForState(AgentEventState, state => state.idle);
+    // Everything past here shares the agent, so it runs one message at a time,
+    // in arrival order. `/stop` above deliberately stays outside the queue: an
+    // abort must not wait on the operation it is aborting.
+    await this.dispatch(conversation, async () => {
+      // Only now that the message is definitely ours are its files worth
+      // fetching. Inside the queue, so the order messages reach the agent is the
+      // order they arrived rather than the order their downloads finished.
+      const attachments = (await msg.attachments?.()) ?? [];
 
-    // Finish writing the previous response before the next one starts sharing
-    // the conversation.
-    await this.batchProcessor.flush();
-    conversation.stream ??= new ConversationStream(provider, msg.conversationId, error => this.error("Error writing to conversation:", error));
+      await conversation.agent.waitForState(AgentEventState, state => state.idle);
 
-    const requestId = conversation.agent.handleInput({
-      from: `${service} message from ${msg.userName ?? msg.userId}`,
-      message: parsed.message,
-      attachments,
+      // Finish writing the previous response before the next one starts sharing
+      // the conversation.
+      await this.batchProcessor.flush();
+      // Answer where the question was asked: a message that arrived in a thread
+      // is answered in that thread rather than shouted into the room.
+      conversation.stream ??= new ConversationStream(
+        provider,
+        msg.conversationId,
+        error => this.error("Error writing to conversation:", error),
+        msg.replyToMessageId ? { replyToMessageId: msg.replyToMessageId } : undefined,
+      );
+
+      const requestId = conversation.agent.handleInput({
+        from: `${service} message from ${msg.userName ?? msg.userId}`,
+        message: parsed.message,
+        attachments,
+      });
+      conversation.activeRequests.add(requestId);
     });
-    conversation.activeRequests.add(requestId);
+  }
+
+  /**
+   * Runs `work` after everything already queued for this conversation, and
+   * hands its result back to this caller. A failure is reported to whoever
+   * queued it and then dropped, so one bad message cannot wedge the queue.
+   */
+  private async dispatch(conversation: Conversation, work: () => Promise<void>): Promise<void> {
+    const current = conversation.dispatch.then(work);
+    // The tail must never be a rejected promise, or the message queued behind it
+    // would be dropped along with it. The failure goes to this caller instead.
+    conversation.dispatch = current.catch(() => {});
+    await current;
   }
 
   /** Opens a channel to a user or group so the bot can start a conversation. */
@@ -202,7 +252,9 @@ export default class Bot {
         conversationId: conversation.conversationId,
         agentId: conversation.agent.id,
         agentType: conversation.agentType,
-        channelName: channelNames.get(key),
+        // By target, not by key: a forum topic's conversation belongs to the
+        // channel configured for the room it sits in.
+        channelName: channelNames.get(conversation.channelTarget ?? key),
         startedAt: conversation.startedAt,
         lastActivityAt: conversation.lastActivityAt,
         busy: conversation.activeRequests.size > 0,
@@ -232,10 +284,17 @@ export default class Bot {
       agentManager.deleteAgent(conversation.agent.id, `Bot ${this.name} was shut down.`);
     }
     this.conversations.clear();
-    this.announcedServices.clear();
+    this.announcedTargets.clear();
   }
 
-  private ensureConversation(key: string, service: string, provider: MessagingProvider, conversationId: string, agentType: string): Conversation {
+  private ensureConversation(
+    key: string,
+    service: string,
+    provider: MessagingProvider,
+    conversationId: string,
+    channelTarget: string,
+    agentType: string,
+  ): Conversation {
     const existing = this.conversations.get(key);
     if (existing) return existing;
 
@@ -245,10 +304,12 @@ export default class Bot {
       service,
       provider,
       conversationId,
+      channelTarget,
       agentType,
       agent: agentManager.spawnAgent({ agentType, headless: true }),
       activeRequests: new Set(),
       listening: true,
+      dispatch: Promise.resolve(),
       startedAt: now,
       lastActivityAt: now,
     };

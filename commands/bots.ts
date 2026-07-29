@@ -36,6 +36,16 @@ function execute({ agent }: AgentCommandInputType<typeof inputSchema>): string {
     }
   }
 
+  const discovered = botService.listDiscoveredChannels();
+  if (discovered.length > 0) {
+    lines.push("", "Discovered channels (no bot has joined these yet):");
+    for (const channel of discovered) {
+      const invited = channel.invitedBy ? `, invited by ${channel.invitedBy}` : "";
+      lines.push(`  ${channel.target}${channel.title ? ` — ${channel.title}` : ""}${invited}`);
+    }
+    lines.push("", `Join one with: /bots join {bot} {target}`);
+  }
+
   return lines.join("\n");
 }
 

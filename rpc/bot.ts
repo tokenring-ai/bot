@@ -47,6 +47,10 @@ export default createRPCEndpoint(BotRpcSchema, {
         maxMessageLength: botService.requireProvider(name).maxMessageLength,
       })),
       groups: Object.entries(botService.config.groups).map(([name, members]) => ({ name, members })),
+      discoveredChannels: botService.listDiscoveredChannels().map(channel => {
+        const { service, id } = botService.parseTarget(channel.target);
+        return stripUndefinedKeys({ ...channel, service, channelId: id });
+      }),
     };
   },
 
@@ -71,5 +75,79 @@ export default createRPCEndpoint(BotRpcSchema, {
       return { status: "conversationNotFound" as const };
     }
     return { status: "success" as const };
+  },
+
+  async createBot(args, app: TokenRingApp) {
+    const botService = app.requireService(BotService);
+    const { name, ...config } = args;
+    if (botService.getBot(name)) {
+      return { status: "botExists" as const };
+    }
+
+    const result = await botService.createBot(name, stripUndefinedKeys(config));
+    return result.ok ? { status: "success" as const } : { status: "configRejected" as const, issues: result.issues };
+  },
+
+  async deleteBot(args, app: TokenRingApp) {
+    const botService = app.requireService(BotService);
+    if (!botService.getBot(args.name)) {
+      return { status: "botNotFound" as const };
+    }
+
+    const result = await botService.deleteBot(args.name);
+    if (!result.ok) return { status: "configRejected" as const, issues: result.issues };
+
+    // Surviving the write means a lower configuration layer defines it.
+    return botService.getBot(args.name) ? { status: "definedElsewhere" as const } : { status: "success" as const };
+  },
+
+  async setUserRole(args, app: TokenRingApp) {
+    const botService = app.requireService(BotService);
+    if (!botService.getBot(args.bot)) {
+      return { status: "botNotFound" as const };
+    }
+
+    const result = await botService.setUserRole(args.bot, args.target, args.role);
+    return result.ok ? { status: "success" as const } : { status: "configRejected" as const, issues: result.issues };
+  },
+
+  async removeUser(args, app: TokenRingApp) {
+    const botService = app.requireService(BotService);
+    const bot = botService.getBot(args.bot);
+    if (!bot) {
+      return { status: "botNotFound" as const };
+    }
+
+    const result = await botService.removeUser(args.bot, args.target);
+    if (!result.ok) return { status: "configRejected" as const, issues: result.issues };
+
+    return botService.getBot(args.bot)?.roleOf(args.target) ? { status: "definedElsewhere" as const } : { status: "success" as const };
+  },
+
+  async joinChannel(args, app: TokenRingApp) {
+    const botService = app.requireService(BotService);
+    if (!botService.getBot(args.bot)) {
+      return { status: "botNotFound" as const };
+    }
+
+    const { service } = botService.parseTarget(args.target);
+    if (!botService.getProvider(service)) {
+      return { status: "providerNotFound" as const };
+    }
+
+    const result = await botService.joinChannel(args.bot, args.target, args.name);
+    return result.ok ? { status: "success" as const } : { status: "configRejected" as const, issues: result.issues };
+  },
+
+  async leaveChannel(args, app: TokenRingApp) {
+    const botService = app.requireService(BotService);
+    if (!botService.getBot(args.bot)) {
+      return { status: "botNotFound" as const };
+    }
+
+    const result = await botService.leaveChannel(args.bot, args.target);
+    if (!result.ok) return { status: "configRejected" as const, issues: result.issues };
+
+    return botService.getBot(args.bot)?.channelConfigForTarget(args.target) ? { status: "definedElsewhere" as const } : { status: "success" as const };
   },
 });

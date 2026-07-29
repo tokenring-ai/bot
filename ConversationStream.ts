@@ -1,6 +1,6 @@
 import getRandomItem from "@tokenring-ai/utility/string/getRandomItem";
 import workingMessages from "@tokenring-ai/utility/string/workingMessages";
-import type { MessagingProvider } from "./MessagingProvider.ts";
+import type { MessagingProvider, SendOptions } from "./MessagingProvider.ts";
 import { splitIntoChunks } from "./splitIntoChunks.ts";
 
 /**
@@ -18,6 +18,9 @@ export default class ConversationStream {
     private readonly provider: MessagingProvider,
     private readonly conversationId: string,
     private readonly onError: (error: unknown) => void,
+    /** Where to post, when the response belongs somewhere narrower than the
+     * conversation — a Slack thread, or a Telegram reply to the message asked. */
+    private readonly sendOptions?: SendOptions  ,
   ) {}
 
   get isComplete(): boolean {
@@ -47,7 +50,7 @@ export default class ConversationStream {
         const existingId = this.messageIds[i];
         this.messageIds[i] = existingId
           ? await this.provider.updateMessage(this.conversationId, existingId, chunk)
-          : await this.provider.sendMessage(this.conversationId, chunk);
+          : await this.provider.sendMessage(this.conversationId, chunk, this.sendOptions);
         this.sentTexts[i] = chunk;
       } catch (error: unknown) {
         this.onError(error);

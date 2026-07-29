@@ -50,6 +50,14 @@ export const BotConfigSchema = z.object({
     .string()
     .exactOptional()
     .meta({ description: "Message announced in each channel when the bot connects" } satisfies ConfigFieldMeta),
+  joinPolicy: z
+    .enum(["manual", "whenInvitedByAdmin", "whenInvited"])
+    .default("manual")
+    .meta({
+      label: "Join Policy",
+      description:
+        "What happens when the bot is added to a group: wait to be joined by hand, join if an admin of this bot invited it, or join whoever invites it",
+    } satisfies ConfigFieldMeta),
   commandMapping: z
     .record(z.string(), z.string())
     .default({ "/reset": "/chat reset" })
@@ -68,6 +76,13 @@ export const BotServiceConfigSchema = z
       .record(z.string(), z.array(z.string()))
       .default({})
       .meta({ label: "Groups", description: "Broadcast groups, keyed by name, listing service:userId members" } satisfies ConfigFieldMeta),
+    channelWriteScope: z
+      .enum(["user", "project"])
+      .default("user")
+      .meta({
+        advanced: true,
+        description: "Config layer that joined channels are written to, whether joined automatically or by command",
+      } satisfies ConfigFieldMeta),
   })
   .meta({ label: "Bots", description: "Channel agnostic bots and the people they talk to" } satisfies ConfigFieldMeta);
 
