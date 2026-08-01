@@ -126,7 +126,7 @@ describe("BotService", () => {
 
     app = createTestingApp();
     const agentManager = new AgentManager(app);
-    app.addServices(agentManager);
+    app.addService(agentManager);
 
     handleInput = mock().mockReturnValue("request-1");
     spawnAgent = spyOn(agentManager, "spawnAgent").mockImplementation(() => {
@@ -465,12 +465,12 @@ describe("BotService", () => {
     let configService: ConfigurationService;
 
     beforeEach(() => {
-      app.addServices(botService);
+      app.addService(botService);
       configService = new ConfigurationService(config => botService.reconfigure(config as never));
       // The bot the suite starts with comes from a layer below the one bots
       // write to, exactly like a bot defined in a checked-in project config.
       configService.base = { bots: { helper: botConfig }, groups: { "dev-team": ["chat:U-admin", "chat:U-member"] } };
-      app.addServices(configService as never);
+      app.addService(configService as never);
     });
 
     it("reports bots, their channels, people, and connected services", async () => {

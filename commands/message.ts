@@ -20,8 +20,8 @@ const inputSchema = {
   },
 } as const satisfies AgentCommandInputSchema;
 
-async function execute({ positionals: { target }, remainder, agent }: AgentCommandInputType<typeof inputSchema>): Promise<string> {
-  const botService = agent.requireServiceByType(BotService);
+async function execute({ args: { target }, remainder, agent }: AgentCommandInputType<typeof inputSchema>): Promise<string> {
+  const botService = agent.requireService(BotService);
   await using channel: CommunicationChannel = await botService.openChannel(target);
   await channel.send(remainder);
   return `Message sent to ${target}.`;

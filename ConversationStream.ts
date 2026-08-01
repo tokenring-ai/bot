@@ -20,7 +20,7 @@ export default class ConversationStream {
     private readonly onError: (error: unknown) => void,
     /** Where to post, when the response belongs somewhere narrower than the
      * conversation — a Slack thread, or a Telegram reply to the message asked. */
-    private readonly sendOptions?: SendOptions  ,
+    private readonly sendOptions?: SendOptions,
   ) {}
 
   get isComplete(): boolean {

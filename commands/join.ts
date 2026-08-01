@@ -17,8 +17,8 @@ const inputSchema = {
   ],
 } as const satisfies AgentCommandInputSchema;
 
-async function execute({ positionals: { bot, target }, args: { name }, agent }: AgentCommandInputType<typeof inputSchema>): Promise<string> {
-  const botService = agent.requireServiceByType(BotService);
+async function execute({ args: { bot, target, name }, agent }: AgentCommandInputType<typeof inputSchema>): Promise<string> {
+  const botService = agent.requireService(BotService);
 
   const result = await botService.joinChannel(bot, target, name);
   if (!result.ok) {

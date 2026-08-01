@@ -6,7 +6,7 @@ const description = "List the configured bots and the platforms they are reachab
 const inputSchema = {} as const satisfies AgentCommandInputSchema;
 
 function execute({ agent }: AgentCommandInputType<typeof inputSchema>): string {
-  const botService = agent.requireServiceByType(BotService);
+  const botService = agent.requireService(BotService);
 
   const services = botService.getProviderNames();
   const lines: string[] = [`Connected messaging services: ${services.length > 0 ? services.join(", ") : "none"}`];

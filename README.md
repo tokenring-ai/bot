@@ -261,7 +261,7 @@ botService.registerProvider("slack", provider);
 A two-way conversation, released through the dispose protocol:
 
 ```typescript
-const botService = agent.requireServiceByType(BotService);
+const botService = agent.requireService(BotService);
 await using channel = await botService.openChannel("group:dev-team");
 
 await channel.send("Ready to publish. Reply approve or reject.");

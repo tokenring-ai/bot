@@ -18,9 +18,7 @@ export default {
   version: packageJSON.version,
   description: packageJSON.description,
   async install(app) {
-    const service = new BotService(app);
-    app.addServices(service);
-
+    app.addService(new BotService(app));
     app.waitForService(AgentCommandService, agentCommandService => agentCommandService.addAgentCommands(agentCommands));
     app.waitForService(RpcService, rpcService => rpcService.registerEndpoint(botRPC));
   },
