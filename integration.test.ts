@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import AgentManager from "@tokenring-ai/agent/services/AgentManager";
 import createTestingAgent from "@tokenring-ai/agent/test/createTestingAgent.test";
 import type TokenRingApp from "@tokenring-ai/app";
+import type { ConfigScope } from "@tokenring-ai/app";
 import createTestingApp from "@tokenring-ai/app/test/createTestingApp.test";
 import deepClone from "@tokenring-ai/utility/object/deepClone";
 import BotService from "./BotService.ts";
@@ -67,15 +68,15 @@ class ConfigurationService {
   readonly description = "Test double for the configuration service";
   /** Layers below the one bots write to, e.g. a checked-in project config. */
   base: Record<string, unknown> = {};
-  private layers: Record<string, Record<string, unknown>> = { user: {}, project: {} };
+  private layers: Record<ConfigScope, Record<string, unknown>> = { global: {}, workspace: {} };
 
   constructor(private readonly reconfigure: (config: unknown) => Promise<void>) {}
 
-  getOverrides(scope: string): Record<string, unknown> {
+  getOverrides(scope: ConfigScope): Record<string, unknown> {
     return structuredClone(this.layers[scope] ?? {});
   }
 
-  async apply(scope: string, next: Record<string, unknown>) {
+  async apply(scope: ConfigScope, next: Record<string, unknown>) {
     // The real merge, so the test double layers exactly the way the app does —
     // including the part that matters here: removing a key from the upper layer
     // cannot unsay the lower one.

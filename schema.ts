@@ -77,8 +77,8 @@ export const BotServiceConfigSchema = z
       .default({})
       .meta({ label: "Groups", description: "Broadcast groups, keyed by name, listing service:userId members" } satisfies ConfigFieldMeta),
     channelWriteScope: z
-      .enum(["user", "project"])
-      .default("user")
+      .enum(["global", "workspace"])
+      .default("workspace")
       .meta({
         advanced: true,
         description: "Config layer that joined channels are written to, whether joined automatically or by command",

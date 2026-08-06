@@ -64,7 +64,7 @@ export default class BotService implements TokenRingService {
   config: ParsedBotServiceConfig = {
     bots: {},
     groups: {},
-    channelWriteScope: "user",
+    channelWriteScope: "workspace",
   };
 
   constructor(private readonly app: TokenRingApp) {}
